@@ -1,0 +1,79 @@
+name: Build Docker Image
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image
+      run: |
+        docker build -f docker/Dockerfile -t argosbx-proxy .
+        echo "✅ Docker 镜像构建成功"
+
+    - name: Test the image
+      run: |
+        echo "🧪 测试运行容器..."
+        docker run -d --name test-argosbx argosbx-proxy
+        sleep 20
+        echo "=== 容器日志 ==="
+        docker logs test-argosbx --tail 30
+        echo "=== 停止容器 ==="
+        docker stop test-argosbx
+        docker rm test-argosbx
+        echo "✅ 测试完成!"
+
+    - name: Save image
+      run: |
+        docker save argosbx-proxy -o argosbx-proxy.tar
+        echo "💾 镜像已保存: argosbx-proxy.tar ($(du -h argosbx-proxy.tar | cut -f1))"
+        
+    - name: Upload Docker image
+      uses: actions/upload-artifact@v4
+      with:
+        name: argosbx-docker-image
+        path: argosbx-proxy.tar
+        retention-days: 30
+
+    - name: Show usage instructions
+      run: |
+        echo ""
+        echo "🎉 Argosbx Docker 镜像构建成功!"
+        echo "=========================================="
+        echo ""
+        echo "📥 下载和使用:"
+        echo "1. 点击上方的 'argosbx-docker-image' 下载镜像文件"
+        echo "2. 在服务器上执行: docker load -i argosbx-proxy.tar"
+        echo "3. 运行容器: docker run -d --name argosbx argosbx-proxy"
+        echo "4. 查看节点: docker exec argosbx agsbx list"
+        echo ""
+        echo "🔧 常用命令:"
+        echo "查看日志: docker logs argosbx"
+        echo "重启服务: docker exec argosbx agsbx res"
+        echo "重置配置: docker exec argosbx agsbx rep"
+        echo "卸载删除: docker exec argosbx agsbx del"
+        echo ""
+        echo "🌐 带端口映射运行:"
+        echo "docker run -d \\"
+        echo "  -p 443:443 -p 8443:8443 -p 2053:2053 \\"
+        echo "  -p 2083:2083 -p 2087:2087 -p 2095:2095 \\"
+        echo "  --name argosbx \\"
+        echo "  argosbx-proxy"
+        echo ""
+        echo "⚙️  自定义配置运行:"
+        echo "docker run -d \\"
+        echo "  -e vlpt=443 -e hypt=8443 -e warp=s4x6 \\"
+        echo "  -e name=my-proxy \\"
+        echo "  -p 443:443 -p 8443:8443 \\"
+        echo "  --name argosbx \\"
+        echo "  argosbx-proxy"
