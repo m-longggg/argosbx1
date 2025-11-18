@@ -1032,7 +1032,6 @@ echo "Argo：未启用"
 fi
 }
 check_and_restart_kernels(){
-
 echo
 echo "=========检测内核运行状态========="
 restart_needed=false
@@ -1079,40 +1078,65 @@ echo "  Xray未安装或配置文件缺失"
 fi
 fi
 
-# 检查Argo - 改进检测逻辑
-if pgrep -f "cloudflared.*tunnel" >/dev/null 2>&1 || pgrep -f "agsbx/cloudflared" >/dev/null 2>&1; then
+# 检查Argo - 改进检测和启动逻辑
+argo_running=false
+
+# 多种方式检测Argo是否运行
+if pgrep -f "cloudflared" >/dev/null 2>&1 || \
+   pgrep -f "agsbx/cloudflared" >/dev/null 2>&1 || \
+   ps aux | grep -v grep | grep -q "cloudflared.*tunnel"; then
+    argo_running=true
+fi
+
+if $argo_running; then
 echo "✓ Argo：运行中"
 else
 echo "✗ Argo：未运行，尝试重启..."
 if [ -e "$HOME/agsbx/cloudflared" ]; then
-# 检查是否有固定token
-if [ -e "$HOME/agsbx/sbargotoken.log" ]; then
-if pidof systemd >/dev/null 2>&1 && [ "$EUID" -eq 0 ]; then
-systemctl restart argo >/dev/null 2>&1 && echo "  Argo重启成功" || echo "  Argo重启失败"
-elif command -v rc-service >/dev/null 2>&1 && [ "$EUID" -eq 0 ]; then
-rc-service argo restart >/dev/null 2>&1 && echo "  Argo重启成功" || echo "  Argo重启失败"
+    # 先杀死可能存在的残留进程
+    pkill -f "cloudflared" 2>/dev/null
+    sleep 1
+    
+    # 检查是否有固定token
+    if [ -e "$HOME/agsbx/sbargotoken.log" ] && [ -s "$HOME/agsbx/sbargotoken.log" ]; then
+        echo "  使用固定token启动Argo..."
+        nohup "$HOME/agsbx/cloudflared" tunnel --no-autoupdate --edge-ip-version auto --protocol http2 run --token "$(cat $HOME/agsbx/sbargotoken.log)" > "$HOME/agsbx/argo.log" 2>&1 &
+        echo "  Argo已启动（固定隧道）"
+        
+    # 检查是否有Vmess配置
+    elif [ -e "$HOME/agsbx/xr.json" ] && grep -q "vmess-xr" "$HOME/agsbx/xr.json" 2>/dev/null; then
+        port_vm_ws=$(grep -A2 "vmess-xr" "$HOME/agsbx/xr.json" | grep "port" | grep -o '[0-9]*' | head -1)
+        if [ -n "$port_vm_ws" ]; then
+            echo "  使用临时隧道启动Argo（端口:$port_vm_ws）..."
+            nohup "$HOME/agsbx/cloudflared" tunnel --url "http://localhost:$port_vm_ws" --edge-ip-version auto --no-autoupdate --protocol http2 > "$HOME/agsbx/argo.log" 2>&1 &
+            echo "  Argo已启动（临时隧道）"
+        else
+            echo "  无法获取Vmess端口"
+        fi
+        
+    elif [ -e "$HOME/agsbx/sb.json" ] && grep -q "vmess-sb" "$HOME/agsbx/sb.json" 2>/dev/null; then
+        port_vm_ws=$(grep -A2 "vmess-sb" "$HOME/agsbx/sb.json" | grep "listen_port" | grep -o '[0-9]*' | head -1)
+        if [ -n "$port_vm_ws" ]; then
+            echo "  使用临时隧道启动Argo（端口:$port_vm_ws）..."
+            nohup "$HOME/agsbx/cloudflared" tunnel --url "http://localhost:$port_vm_ws" --edge-ip-version auto --no-autoupdate --protocol http2 > "$HOME/agsbx/argo.log" 2>&1 &
+            echo "  Argo已启动（临时隧道）"
+        else
+            echo "  无法获取Vmess端口"
+        fi
+    else
+        echo "  Argo未配置或Vmess协议未启用"
+    fi
+    
+    sleep 3
+    # 再次检查是否启动成功
+    if pgrep -f "cloudflared" >/dev/null 2>&1; then
+        restart_needed=true
+        echo "  Argo启动验证：成功"
+    else
+        echo "  Argo启动验证：失败，请检查日志 $HOME/agsbx/argo.log"
+    fi
 else
-nohup "$HOME/agsbx/cloudflared" tunnel --no-autoupdate --edge-ip-version auto --protocol http2 run --token "$(cat $HOME/agsbx/sbargotoken.log 2>/dev/null)" >/dev/null 2>&1 &
-echo "  Argo已启动（固定隧道）"
-fi
-else
-# 临时隧道
-if [ -e "$HOME/agsbx/xr.json" ] && grep -q "vmess-xr" "$HOME/agsbx/xr.json" 2>/dev/null; then
-port_vm_ws=$(grep -A2 vmess-xr "$HOME/agsbx/xr.json" | grep port | tail -1 | tr -cd '0-9')
-nohup "$HOME/agsbx/cloudflared" tunnel --url "http://localhost:$port_vm_ws" --edge-ip-version auto --no-autoupdate --protocol http2 > "$HOME/agsbx/argo.log" 2>&1 &
-echo "  Argo已启动（临时隧道，端口:$port_vm_ws）"
-elif [ -e "$HOME/agsbx/sb.json" ] && grep -q "vmess-sb" "$HOME/agsbx/sb.json" 2>/dev/null; then
-port_vm_ws=$(grep -A2 vmess-sb "$HOME/agsbx/sb.json" | grep listen_port | tail -1 | tr -cd '0-9')
-nohup "$HOME/agsbx/cloudflared" tunnel --url "http://localhost:$port_vm_ws" --edge-ip-version auto --no-autoupdate --protocol http2 > "$HOME/agsbx/argo.log" 2>&1 &
-echo "  Argo已启动（临时隧道，端口:$port_vm_ws）"
-else
-echo "  Argo未配置或Vmess协议未启用"
-fi
-fi
-sleep 2
-restart_needed=true
-else
-echo "  Argo未安装"
+    echo "  Argo未安装"
 fi
 fi
 
