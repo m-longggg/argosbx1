@@ -1032,6 +1032,7 @@ echo "Argo：未启用"
 fi
 }
 check_and_restart_kernels(){
+
 echo
 echo "=========检测内核运行状态========="
 restart_needed=false
@@ -1043,14 +1044,17 @@ else
 echo "✗ Sing-box：未运行，尝试重启..."
 if [ -e "$HOME/agsbx/sing-box" ] && [ -e "$HOME/agsbx/sb.json" ]; then
 if pidof systemd >/dev/null 2>&1 && [ "$EUID" -eq 0 ]; then
-systemctl restart sb >/dev/null 2>&1
+systemctl restart sb >/dev/null 2>&1 && echo "  Sing-box重启成功" || echo "  Sing-box重启失败"
 elif command -v rc-service >/dev/null 2>&1 && [ "$EUID" -eq 0 ]; then
-rc-service sing-box restart >/dev/null 2>&1
+rc-service sing-box restart >/dev/null 2>&1 && echo "  Sing-box重启成功" || echo "  Sing-box重启失败"
 else
 nohup "$HOME/agsbx/sing-box" run -c "$HOME/agsbx/sb.json" >/dev/null 2>&1 &
+echo "  Sing-box已启动"
 fi
 sleep 2
 restart_needed=true
+else
+echo "  Sing-box未安装或配置文件缺失"
 fi
 fi
 
@@ -1061,40 +1065,54 @@ else
 echo "✗ Xray：未运行，尝试重启..."
 if [ -e "$HOME/agsbx/xray" ] && [ -e "$HOME/agsbx/xr.json" ]; then
 if pidof systemd >/dev/null 2>&1 && [ "$EUID" -eq 0 ]; then
-systemctl restart xr >/dev/null 2>&1
+systemctl restart xr >/dev/null 2>&1 && echo "  Xray重启成功" || echo "  Xray重启失败"
 elif command -v rc-service >/dev/null 2>&1 && [ "$EUID" -eq 0 ]; then
-rc-service xray restart >/dev/null 2>&1
+rc-service xray restart >/dev/null 2>&1 && echo "  Xray重启成功" || echo "  Xray重启失败"
 else
 nohup "$HOME/agsbx/xray" run -c "$HOME/agsbx/xr.json" >/dev/null 2>&1 &
+echo "  Xray已启动"
 fi
 sleep 2
 restart_needed=true
+else
+echo "  Xray未安装或配置文件缺失"
 fi
 fi
 
-# 检查Argo
-if echo "$(find /proc/*/exe -type l 2>/dev/null | grep -E '/proc/[0-9]+/exe' | xargs -r readlink 2>/dev/null)" | grep -Eq 'agsbx/c' || pgrep -f 'agsbx/c' >/dev/null 2>&1; then
+# 检查Argo - 改进检测逻辑
+if pgrep -f "cloudflared.*tunnel" >/dev/null 2>&1 || pgrep -f "agsbx/cloudflared" >/dev/null 2>&1; then
 echo "✓ Argo：运行中"
 else
 echo "✗ Argo：未运行，尝试重启..."
 if [ -e "$HOME/agsbx/cloudflared" ]; then
+# 检查是否有固定token
 if [ -e "$HOME/agsbx/sbargotoken.log" ]; then
 if pidof systemd >/dev/null 2>&1 && [ "$EUID" -eq 0 ]; then
-systemctl restart argo >/dev/null 2>&1
+systemctl restart argo >/dev/null 2>&1 && echo "  Argo重启成功" || echo "  Argo重启失败"
 elif command -v rc-service >/dev/null 2>&1 && [ "$EUID" -eq 0 ]; then
-rc-service argo restart >/dev/null 2>&1
+rc-service argo restart >/dev/null 2>&1 && echo "  Argo重启成功" || echo "  Argo重启失败"
 else
 nohup "$HOME/agsbx/cloudflared" tunnel --no-autoupdate --edge-ip-version auto --protocol http2 run --token "$(cat $HOME/agsbx/sbargotoken.log 2>/dev/null)" >/dev/null 2>&1 &
+echo "  Argo已启动（固定隧道）"
 fi
 else
-if [ -e "$HOME/agsbx/xr.json" ]; then
-nohup "$HOME/agsbx/cloudflared" tunnel --url http://localhost:"$(grep -A2 vmess-xr "$HOME/agsbx/xr.json" | tail -1 | tr -cd 0-9)" --edge-ip-version auto --no-autoupdate --protocol http2 > "$HOME/agsbx/argo.log" 2>&1 &
-elif [ -e "$HOME/agsbx/sb.json" ]; then
-nohup "$HOME/agsbx/cloudflared" tunnel --url http://localhost:"$(grep -A2 vmess-sb "$HOME/agsbx/sb.json" | tail -1 | tr -cd 0-9)" --edge-ip-version auto --no-autoupdate --protocol http2 > "$HOME/agsbx/argo.log" 2>&1 &
+# 临时隧道
+if [ -e "$HOME/agsbx/xr.json" ] && grep -q "vmess-xr" "$HOME/agsbx/xr.json" 2>/dev/null; then
+port_vm_ws=$(grep -A2 vmess-xr "$HOME/agsbx/xr.json" | grep port | tail -1 | tr -cd '0-9')
+nohup "$HOME/agsbx/cloudflared" tunnel --url "http://localhost:$port_vm_ws" --edge-ip-version auto --no-autoupdate --protocol http2 > "$HOME/agsbx/argo.log" 2>&1 &
+echo "  Argo已启动（临时隧道，端口:$port_vm_ws）"
+elif [ -e "$HOME/agsbx/sb.json" ] && grep -q "vmess-sb" "$HOME/agsbx/sb.json" 2>/dev/null; then
+port_vm_ws=$(grep -A2 vmess-sb "$HOME/agsbx/sb.json" | grep listen_port | tail -1 | tr -cd '0-9')
+nohup "$HOME/agsbx/cloudflared" tunnel --url "http://localhost:$port_vm_ws" --edge-ip-version auto --no-autoupdate --protocol http2 > "$HOME/agsbx/argo.log" 2>&1 &
+echo "  Argo已启动（临时隧道，端口:$port_vm_ws）"
+else
+echo "  Argo未配置或Vmess协议未启用"
 fi
 fi
 sleep 2
 restart_needed=true
+else
+echo "  Argo未安装"
 fi
 fi
 
@@ -1104,6 +1122,7 @@ echo "已尝试重启未运行的内核，请稍等..."
 sleep 3
 fi
 }
+
 cip(){
 ipbest(){
 serip=$( (command -v curl >/dev/null 2>&1 && (curl -s4m5 -k "$v46url" 2>/dev/null || curl -s6m5 -k "$v46url" 2>/dev/null) ) || (command -v wget >/dev/null 2>&1 && (timeout 3 wget -4 -qO- --tries=2 "$v46url" 2>/dev/null || timeout 3 wget -6 -qO- --tries=2 "$v46url" 2>/dev/null) ) )
