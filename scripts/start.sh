@@ -1,6 +1,23 @@
 #!/bin/sh
 export LANG=en_US.UTF-8
 
+# Alpine Linux 环境检测和依赖安装
+detect_alpine() {
+    if [ -f /etc/alpine-release ]; then
+        echo "🐧 检测到 Alpine Linux 系统"
+        # 检查并安装必要依赖
+        if ! command -v curl >/dev/null 2>&1 || ! command -v wget >/dev/null 2>&1; then
+            echo "📦 安装 Alpine Linux 必要依赖..."
+            apk update >/dev/null 2>&1
+            apk add curl wget openssl openssh-client ca-certificates >/dev/null 2>&1
+            echo "✅ 依赖安装完成"
+        fi
+        return 0
+    else
+        return 1
+    fi
+}
+
 # 协议变量检查
 [ -z "${vlpt+x}" ] || vlp=yes
 [ -z "${vmpt+x}" ] || { vmp=yes; vmag=yes; } 
@@ -46,6 +63,9 @@ export name=${name:-''}
 
 v46url="https://icanhazip.com"
 agsbxurl="https://raw.githubusercontent.com/m-longggg/argosbx-docker/refs/heads/main/scripts/argosbx.sh"
+
+# 检测 Alpine Linux
+detect_alpine
 
 showmode(){
 echo "主脚本：bash <(curl -Ls https://raw.githubusercontent.com/m-longggg/argosbx-docker/refs/heads/main/scripts/argosbx.sh) 或 bash <(wget -qO- https://raw.githubusercontent.com/m-longggg/argosbx-docker/refs/heads/main/scripts/argosbx.sh)"
