@@ -1092,32 +1092,51 @@ if $argo_running; then
 echo "✓ Argo：运行中"
 else
 echo "✗ Argo：未运行，尝试重启..."
-if [ -e "$HOME/agsbx/cloudflared" ]; then
-    # 先杀死可能存在的残留进程
-    pkill -f "cloudflared" 2>/dev/null
-    sleep 1
+restart_argo_tunnel
+fi
+
+if [ "$restart_needed" = true ]; then
+echo
+echo "已尝试重启未运行的内核，请稍等..."
+sleep 3
+fi
+}
+
+# 新增Argo隧道重新生成函数
+restart_argo_tunnel() {
+    echo "  正在重新生成Argo隧道..."
     
-    # 检查是否有固定token
+    # 杀死任何现有的cloudflared进程
+    pkill -f "cloudflared" 2>/dev/null
+    sleep 2
+    
+    # 检查固定令牌配置
     if [ -e "$HOME/agsbx/sbargotoken.log" ] && [ -s "$HOME/agsbx/sbargotoken.log" ]; then
-        echo "  使用固定token启动Argo..."
-        nohup "$HOME/agsbx/cloudflared" tunnel --no-autoupdate --edge-ip-version auto --protocol http2 run --token "$(cat $HOME/agsbx/sbargotoken.log)" > "$HOME/agsbx/argo.log" 2>&1 &
-        echo "  Argo已启动（固定隧道）"
+        echo "  使用固定隧道令牌启动Argo..."
+        if pidof systemd >/dev/null 2>&1 && [ "$EUID" -eq 0 ]; then
+            systemctl restart argo >/dev/null 2>&1 && echo "  Argo重启成功" || echo "  Argo重启失败"
+        elif command -v rc-service >/dev/null 2>&1 && [ "$EUID" -eq 0 ]; then
+            rc-service argo restart >/dev/null 2>&1 && echo "  Argo重启成功" || echo "  Argo重启失败"
+        else
+            nohup "$HOME/agsbx/cloudflared" tunnel --no-autoupdate --edge-ip-version auto --protocol http2 run --token "$(cat $HOME/agsbx/sbargotoken.log)" > "$HOME/agsbx/argo.log" 2>&1 &
+            echo "  Argo已启动（固定隧道）"
+        fi
         
-    # 检查是否有Vmess配置
-    elif [ -e "$HOME/agsbx/xr.json" ] && grep -q "vmess-xr" "$HOME/agsbx/xr.json" 2>/dev/null; then
+    # 检查Vmess配置以创建临时隧道
+    elif [ -e "$HOME/agsbx/xr.json" ] && grep -q "vmess-xr" "$HOME/agsbx/xr.json"; then
         port_vm_ws=$(grep -A2 "vmess-xr" "$HOME/agsbx/xr.json" | grep "port" | grep -o '[0-9]*' | head -1)
         if [ -n "$port_vm_ws" ]; then
-            echo "  使用临时隧道启动Argo（端口:$port_vm_ws）..."
+            echo "  创建临时Argo隧道（端口:$port_vm_ws）..."
             nohup "$HOME/agsbx/cloudflared" tunnel --url "http://localhost:$port_vm_ws" --edge-ip-version auto --no-autoupdate --protocol http2 > "$HOME/agsbx/argo.log" 2>&1 &
             echo "  Argo已启动（临时隧道）"
         else
             echo "  无法获取Vmess端口"
         fi
         
-    elif [ -e "$HOME/agsbx/sb.json" ] && grep -q "vmess-sb" "$HOME/agsbx/sb.json" 2>/dev/null; then
+    elif [ -e "$HOME/agsbx/sb.json" ] && grep -q "vmess-sb" "$HOME/agsbx/sb.json"; then
         port_vm_ws=$(grep -A2 "vmess-sb" "$HOME/agsbx/sb.json" | grep "listen_port" | grep -o '[0-9]*' | head -1)
         if [ -n "$port_vm_ws" ]; then
-            echo "  使用临时隧道启动Argo（端口:$port_vm_ws）..."
+            echo "  创建临时Argo隧道（端口:$port_vm_ws）..."
             nohup "$HOME/agsbx/cloudflared" tunnel --url "http://localhost:$port_vm_ws" --edge-ip-version auto --no-autoupdate --protocol http2 > "$HOME/agsbx/argo.log" 2>&1 &
             echo "  Argo已启动（临时隧道）"
         else
@@ -1127,24 +1146,20 @@ if [ -e "$HOME/agsbx/cloudflared" ]; then
         echo "  Argo未配置或Vmess协议未启用"
     fi
     
-    sleep 3
-    # 再次检查是否启动成功
+    # 等待并验证启动
+    sleep 5
     if pgrep -f "cloudflared" >/dev/null 2>&1; then
         restart_needed=true
         echo "  Argo启动验证：成功"
+        
+        # 显示新隧道信息
+        argodomain=$(grep -a trycloudflare.com "$HOME/agsbx/argo.log" 2>/dev/null | awk 'NR==2{print}' | awk -F// '{print $2}' | awk '{print $1}')
+        if [ -n "$argodomain" ]; then
+            echo "  新Argo域名: $argodomain"
+        fi
     else
         echo "  Argo启动验证：失败，请检查日志 $HOME/agsbx/argo.log"
     fi
-else
-    echo "  Argo未安装"
-fi
-fi
-
-if [ "$restart_needed" = true ]; then
-echo
-echo "已尝试重启未运行的内核，请稍等..."
-sleep 3
-fi
 }
 
 cip(){
