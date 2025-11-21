@@ -62,10 +62,10 @@ export warp=${warp:-''}
 export name=${name:-''}
 export oap=${oap:-''}
 v46url="https://icanhazip.com"
-agsbxurl="https://raw.githubusercontent.com/yonggekkk/argosbx/main/argosbx.sh"
+agsbxurl="https://raw.githubusercontent.com/m-longggg/argosbx-docker/refs/heads/main/scripts/argosbx.sh"
 showmode(){
-echo "Argosbx脚本一键SSH命令生器在线网址：https://yonggekkk.github.io/argosbx/"
-echo "主脚本：bash <(curl -Ls https://raw.githubusercontent.com/yonggekkk/argosbx/main/argosbx.sh) 或 bash <(wget -qO- https://raw.githubusercontent.com/yonggekkk/argosbx/main/argosbx.sh)"
+
+echo "主脚本：bash <(curl -Ls https://raw.githubusercontent.com/m-longggg/argosbx-docker/refs/heads/main/scripts/argosbx.sh) 或 bash <(wget -qO- https://raw.githubusercontent.com/m-longggg/argosbx-docker/refs/heads/main/scripts/argosbx.sh)"
 echo "显示节点信息命令：agsbx list 【或者】 主脚本 list"
 echo "重置变量组命令：自定义各种协议变量组 agsbx rep 【或者】 自定义各种协议变量组 主脚本 rep"
 echo "更新脚本命令：原已安装的自定义各种协议变量组 主脚本 rep"
@@ -1399,7 +1399,7 @@ if [ "$1" = "del" ]; then
 cleandel
 rm -rf "$HOME/agsbx" "$HOME/agsb"
 echo "卸载完成"
-echo "欢迎继续使用甬哥侃侃侃ygkkk的Argosbx一键无交互小钢炮脚本💣" && sleep 2
+echo "欢迎继续使用Argosbx一键无交互小钢炮脚本💣" && sleep 2
 echo
 showmode
 exit
